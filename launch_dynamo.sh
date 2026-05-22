@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #SBATCH --nodes=1
 #SBATCH --constraint=gpu
-#SBATCH -A nstaff
+#SBATCH -A <YOUR ACCOUNT>
 #SBATCH --time=1-00:00:00
 #SBATCH --qos=regular
 
