@@ -114,20 +114,7 @@ Smoke-test models verified so far:
 | `TinyLlama/TinyLlama-1.1B-Chat-v1.0` | 1 | 4 | 4 | `MODEL_NAME=TinyLlama/TinyLlama-1.1B-Chat-v1.0 sbatch launch_dynamo.sh` |
 | `TinyLlama/TinyLlama-1.1B-Chat-v1.0` | 2 | 8 | 8 | `MODEL_NAME=TinyLlama/TinyLlama-1.1B-Chat-v1.0 sbatch --nodes=2 launch_dynamo.sh` |
 
-The current launcher defaults to:
-
-- Account: `<your Account>`
-- QOS: `regular`
-- Nodes: `1`
-- GPUs per node: `4`
-- Image: `nvcr.io/nvidia/ai-dynamo/sglang-runtime:1.0.2`
-- Model: `Qwen/Qwen3-0.6B`
-- Tensor parallel size: `4 * SLURM_JOB_NUM_NODES`
-- Runtime logs: redirected to `/dev/null` to keep Slurm logs concise
-
-You can also edit `#SBATCH --nodes` for 1 node, 2 nodes, 3 nodes, or more:
-
-Also edit `TP` in `launch_dynamo.sh` if your allocation or model requires it. You can set `MODEL_NAME` at submit time without editing the script. By default, `TP` is computed as `4 * SLURM_JOB_NUM_NODES`, matching 4 GPUs per allocated node.
+You can also edit `#SBATCH --nodes` for 1 node, 2 nodes, 3 nodes, or more directly and edit `TP` in `launch_dynamo.sh` if your allocation or model requires it. You can set `MODEL_NAME` at submit time without editing the script. By default, `TP` is computed as `4 * SLURM_JOB_NUM_NODES`, matching 4 GPUs per allocated node.
 
 ## What the Job Does
 
