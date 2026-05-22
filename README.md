@@ -1,6 +1,4 @@
-# sglang-deployment
-
-
+# NVIDIA Dynamo Quickstart on Perlmutter (SGLang Backend)
 
 ## Getting started
 
@@ -37,4 +35,12 @@ and/or, save it in your home directory:
 ```bash
 echo "$HF_TOKEN" > "$HOME/.hf_token"
 chmod 600 "$HOME/.hf_token"
+```
+
+Make sure to make the logs directory for Slurm logs. 
+# sglang-deployment (without NVIDIA-DYNAMO)
+```bash
+mkdir $PWD/logs
+
+sbatch launch.sh
 ```
