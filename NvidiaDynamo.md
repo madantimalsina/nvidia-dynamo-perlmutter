@@ -116,7 +116,7 @@ Smoke-test models verified so far:
 
 The current launcher defaults to:
 
-- Account: `nstaff`
+- Account: `<your Account>`
 - QOS: `regular`
 - Nodes: `1`
 - GPUs per node: `4`
