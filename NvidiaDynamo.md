@@ -1,14 +1,6 @@
 # NVIDIA Dynamo Quickstart on Perlmutter (SGLang Backend)
 
-NVIDIA Dynamo, a distributed inference serving framework, was successfully deployed on NERSC Perlmutter using the SGLang backend. The official NVIDIA Dynamo container image (`sglang-runtime:1.0.2`) was pulled and migrated to `$PSCRATCH` to manage storage efficiently. A GPU compute node on Perlmutter was allocated through Slurm, and the container was launched with `podman-hpc`. Inside the container, the OpenAI-compatible frontend was started on port `8000`, and the `Qwen/Qwen3-0.6B` language model was deployed as a SGLang worker. The deployment was verified with a health check and a chat completion request to the endpoint, which returned a valid model response. This confirms that NVIDIA Dynamo is functional on Perlmutter for the SGLang path and ready for further experimentation with larger models and more advanced deployment examples such as tensor parallelism, disaggregated serving, and multi-node inference.
-
-This repository includes a non-interactive Slurm launcher:
-
-```bash
-launch_dynamo.sh
-```
-
-The script is intentionally similar to `launch.sh`: Slurm allocates the node or nodes, the head node starts the Dynamo frontend, and each allocated node starts a Dynamo SGLang worker. The 1-node path has been tested successfully, and the 2-node path has also been tested successfully with a small public Hugging Face model. The script is also structured for 3-node and larger multi-node runs by deriving the node list from Slurm and assigning one worker rank per allocated node.
+NVIDIA Dynamo was tested on NERSC Perlmutter using the SGLang backend through the non-interactive Slurm launcher `launch_dynamo.sh`. The script allocates GPU node(s) with Slurm, starts the Dynamo frontend on the head node, and launches one Dynamo SGLang worker per allocated node using `podman-hpc` and the migrated `sglang-runtime:1.0.2` container image from `$PSCRATCH`. The deployment was validated with the `Qwen/Qwen3-0.6B` model using the Dynamo `/health` endpoint and an OpenAI-compatible chat completion request. 
 
 ## Prerequisites
 
