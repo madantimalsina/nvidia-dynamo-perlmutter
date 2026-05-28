@@ -6,6 +6,7 @@ The repository also includes an interactive quickstart in [NvidiaDynamo.md](Nvid
 
 In addition to the NVIDIA Dynamo workflow, the repository includes a standalone SGLang deployment script, `launch.sh`, for running SGLang directly without NVIDIA Dynamo. This provides a useful comparison path between plain SGLang serving and Dynamo-managed SGLang serving on Perlmutter.
 
+A like-for-like benchmark of **Qwen3.6-27B at 1M context** comparing Dynamo+SGLang against a vLLM v0.21.0 baseline is documented in [Ndynamo+SGlangVSvllm.md](Ndynamo+SGlangVSvllm.md), with the launcher `launch_dynamo_qwen3.6-1m.sh` and benchmark driver `bench_qwen3.6_1m.sh` checked in alongside it.
 
 ## Getting started
 
@@ -26,6 +27,24 @@ For the tested non-interactive path, start with:
 
 ```bash
 sbatch launch_dynamo.sh
+```
+
+### Qwen3.6-27B @ 1M context benchmark
+
+A patched launcher and benchmark driver for running Qwen3.6-27B at 1M context window
+with fp8 KV cache are provided:
+
+- `launch_dynamo_qwen3.6-1m.sh` — Slurm launcher with all 1M-ctx flags wired in (TP=4,
+  fp8 KV, YaRN RoPE scaling, `SGLANG_ALLOW_OVERWRITE_LONGER_CONTEXT_LEN=1`)
+- `bench_qwen3.6_1m.sh` — benchmark driver that sweeps prefill input lengths and decode
+  concurrencies, reporting results in the same format as the vLLM baseline
+
+Results and methodology are in [Ndynamo+SGlangVSvllm.md](Ndynamo+SGlangVSvllm.md).
+
+```bash
+sbatch launch_dynamo_qwen3.6-1m.sh
+# once the endpoint is healthy:
+./bench_qwen3.6_1m.sh
 ```
 
 ## Setting up hugging face token
