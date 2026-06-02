@@ -14,22 +14,22 @@
 
 # Launch NVIDIA Dynamo (SGLang backend) serving Qwen3.6-27B at 1M context
 # on Perlmutter. The server stays up for the wall-time so an external
-# benchmark driver (bench_qwen3.6_1m.sh) can hit the OpenAI-compatible
+# benchmark driver (bench_sglang_qwen3.6_1m.sh) can hit the OpenAI-compatible
 # endpoint at http://${HEAD_NODE}:8000/v1.
 #
 # Submit:
-#   sbatch launch_dynamo_qwen3.6-1m.sh                 # 1 node, TP=4
-#   sbatch --nodes=2 launch_dynamo_qwen3.6-1m.sh       # 2 nodes, TP=8
+#   sbatch launch_sglang_qwen3.6-1m.sh                 # 1 node, TP=4
+#   sbatch --nodes=2 launch_sglang_qwen3.6-1m.sh       # 2 nodes, TP=8
 #
 # Override knobs at submit time, e.g.:
-#   CONTEXT_LEN=524288 MAX_RUNNING=32 sbatch launch_dynamo_qwen3.6-1m.sh
+#   CONTEXT_LEN=524288 MAX_RUNNING=32 sbatch launch_sglang_qwen3.6-1m.sh
 
 set -eE
 
 export HF_HOME=$SCRATCH/cache
 export TVM_FFI_CACHE_DIR=$SCRATCH/.cache
 export HF_TOKEN="${HF_TOKEN:-$(cat ~/.hf_token 2>/dev/null || true)}"
-export DYNAMO_IMAGE="nvcr.io/nvidia/ai-dynamo/sglang-runtime:1.0.2"
+export DYNAMO_IMAGE="nvcr.io/nvidia/ai-dynamo/sglang-runtime:1.1.1"
 export DYNAMO_STORE="$SCRATCH/dynamo_store_kv_${SLURM_JOB_ID}"
 FRONTEND_LOG="logs/dynamo-frontend-${SLURM_JOB_ID}.log"
 WORKER_LOG_PREFIX="logs/dynamo-worker-${SLURM_JOB_ID}"
@@ -61,7 +61,7 @@ podman_dynamo() {
     -e "TVM_FFI_CACHE_DIR=${TVM_FFI_CACHE_DIR}" \
     -e "HF_TOKEN=${HF_TOKEN}" \
     -e "HF_HOME=${HF_HOME}" \
-    -w /workdir \
+    -w /tmp \
     ${DYNAMO_IMAGE} \
     "$@"
 }
@@ -249,7 +249,7 @@ EOF
 
 log "Dynamo SGLang ready. Endpoint: http://${HEAD_NODE}:${LLM_PORT}/v1"
 log "Ready marker: ${READY_MARKER}"
-log "Run benchmark:  HEAD_NODE=${HEAD_NODE} MODEL_NAME=${MODEL_NAME} ./bench_qwen3.6_1m.sh"
+log "Run benchmark:  HEAD_NODE=${HEAD_NODE} MODEL_NAME=${MODEL_NAME} ./bench_sglang_qwen3.6_1m.sh"
 log "Server will stay up until walltime expires or job is cancelled."
 
 # Stay alive so the OpenAI endpoint remains reachable for the bench driver.

@@ -1,6 +1,6 @@
 
 
-NVIDIA Dynamo, a distributed inference serving framework, was successfully deployed on NERSC Perlmutter using the SGLang backend. The official NVIDIA Dynamo container image (`sglang-runtime:1.0.2`) was pulled and migrated to `$PSCRATCH` to manage storage efficiently. A GPU compute node on Perlmutter was allocated through Slurm, and the container was launched with `podman-hpc`. Inside the container, the OpenAI-compatible frontend was started on port 8000, and the Qwen3-0.6B language model was deployed as a single-GPU worker. The deployment was verified with a health check and a chat completion request to the endpoint, which returned a valid model response. This confirms that NVIDIA Dynamo is functional on Perlmutter for the single-GPU SGLang path and ready for further experimentation with larger models and more advanced deployment examples such as tensor parallelism, disaggregated serving, and multi-node inference.
+NVIDIA Dynamo, a distributed inference serving framework, was successfully deployed on NERSC Perlmutter using the SGLang backend. The official NVIDIA Dynamo container image (`sglang-runtime:1.1.1`) was pulled and migrated to `$PSCRATCH` to manage storage efficiently. A GPU compute node on Perlmutter was allocated through Slurm, and the container was launched with `podman-hpc`. Inside the container, the OpenAI-compatible frontend was started on port 8000, and the Qwen3-0.6B language model was deployed as a single-GPU worker. The deployment was verified with a health check and a chat completion request to the endpoint, which returned a valid model response. This confirms that NVIDIA Dynamo is functional on Perlmutter for the single-GPU SGLang path and ready for further experimentation with larger models and more advanced deployment examples such as tensor parallelism, disaggregated serving, and multi-node inference.
 
 # NVIDIA Dynamo Quickstart on Perlmutter (SGLang Backend)
 
@@ -32,8 +32,8 @@ Password: <your NGC API key>
 Pull the image and migrate to `$PSCRATCH` to avoid home directory quota issues:
 
 ```bash
-podman-hpc pull nvcr.io/nvidia/ai-dynamo/sglang-runtime:1.0.2
-podman-hpc migrate nvcr.io/nvidia/ai-dynamo/sglang-runtime:1.0.2
+podman-hpc pull nvcr.io/nvidia/ai-dynamo/sglang-runtime:1.1.1
+podman-hpc migrate nvcr.io/nvidia/ai-dynamo/sglang-runtime:1.1.1
 ```
 
 ---
@@ -69,7 +69,7 @@ nvidia-smi
 
 ### CPU only
 ```bash
-podman-hpc run --network host --rm -it nvcr.io/nvidia/ai-dynamo/sglang-runtime:1.0.2
+podman-hpc run --network host --rm -it nvcr.io/nvidia/ai-dynamo/sglang-runtime:1.1.1
 ```
 
 ### GPU
@@ -81,7 +81,7 @@ podman-hpc run \
     --ipc=host \
     --ulimit memlock=-1 \
     --rm -it \
-    nvcr.io/nvidia/ai-dynamo/sglang-runtime:1.0.2
+    nvcr.io/nvidia/ai-dynamo/sglang-runtime:1.1.1
 ```
 
 ---

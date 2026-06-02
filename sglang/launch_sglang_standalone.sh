@@ -44,7 +44,7 @@ podman_llm() {
     -e "TVM_FFI_CACHE_DIR=${TVM_FFI_CACHE_DIR}" \
     -e "HF_TOKEN=${HF_TOKEN}" \
     -e "HF_HOME=${HF_HOME}" \
-    -w /workdir \
+    -w /tmp \
     ${SGLANG_IMAGE} \
     "$@"
 }

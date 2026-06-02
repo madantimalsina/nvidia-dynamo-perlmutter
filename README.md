@@ -1,72 +1,217 @@
-# NVIDIA Dynamo Quickstart on Perlmutter (SGLang Backend)
+# NVIDIA Dynamo on Perlmutter
 
-NVIDIA Dynamo has been deployed on NERSC Perlmutter using the SGLang backend through the Slurm launcher `launch_dynamo.sh`. This launcher allocates GPU nodes with Slurm, starts the Dynamo frontend on the head node, and launches one Dynamo SGLang worker per allocated node using `srun`, `podman-hpc`, GPU/NCCL support, and the official NVIDIA Dynamo SGLang runtime container. It dynamically derives the Slurm node list, supports single-node and multi-node runs, waits for worker registration through the Dynamo health endpoint, and saves a test chat-completion response to the `logs/` directory.
+NVIDIA Dynamo deployed on NERSC Perlmutter, with both supported backends:
 
-The repository also includes an interactive quickstart in [NvidiaDynamo.md](NvidiaDynamo.md), showing the manual workflow for authenticating with NGC, pulling and migrating the NVIDIA Dynamo SGLang runtime image, requesting a Perlmutter GPU allocation, launching the container with `podman-hpc`, starting the Dynamo frontend and SGLang worker, and verifying the OpenAI-compatible endpoint.
+- **SGLang** ([`sglang/`](sglang/)) — verified smoke test, multi-node SGLang, a
+  Qwen3.6-27B @ 1M-context benchmark stack, and a like-for-like Dynamo+SGLang
+  vs. vLLM v0.21.0 comparison.
+- **vLLM** ([`vllm/`](vllm/)) — verified smoke test on the
+  [`nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.1.1`](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/ai-dynamo/containers/vllm-runtime?version=1.1.1)
+  image, single- and multi-node (torch.distributed) launchers.
 
-In addition to the NVIDIA Dynamo workflow, the repository includes a standalone SGLang deployment script, `launch.sh`, for running SGLang directly without NVIDIA Dynamo. This provides a useful comparison path between plain SGLang serving and Dynamo-managed SGLang serving on Perlmutter.
+Both launchers allocate GPU nodes through Slurm, start the Dynamo frontend on
+the head node, bring up one worker per allocated node via `srun` + `podman-hpc`,
+wait for worker registration through the Dynamo `/health` endpoint, and save a
+test chat-completion response to `logs/`. Discovery uses the file backend
+(`--discovery-backend file`) with explicit `--request-plane tcp --event-plane zmq`
+so no NATS/etcd infrastructure is needed for a single-job run.
 
-A like-for-like benchmark of **Qwen3.6-27B at 1M context** comparing Dynamo+SGLang against a vLLM v0.21.0 baseline is documented in [Ndynamo+SGlangVSvllm.md](Ndynamo+SGlangVSvllm.md), with the launcher `launch_dynamo_qwen3.6-1m.sh` and benchmark driver `bench_qwen3.6_1m.sh` checked in alongside it.
+## Prerequisites
 
-## Getting started
+One-time setup on Perlmutter before the first submit.
 
-Make sure to make the logs directory for Slurm logs. 
+**Useful links**
 
-```bash
-mkdir $PWD/logs
-```
+- NVIDIA Dynamo on NGC (catalog search): <https://catalog.ngc.nvidia.com/search?orderBy=scoreDESC&query=dynamo>
+  — [`sglang-runtime`](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/ai-dynamo/containers/sglang-runtime),
+  [`vllm-runtime`](https://catalog.ngc.nvidia.com/orgs/nvidia/teams/ai-dynamo/containers/vllm-runtime)
+- NVIDIA Dynamo source: <https://github.com/ai-dynamo/dynamo>
+- NVIDIA Dynamo docs (vLLM backend reference): <https://github.com/ai-dynamo/dynamo/tree/main/docs/backends/vllm>
+- `podman-hpc` on NERSC: <https://docs.nersc.gov/development/containers/podman-hpc/overview/>
+- Hugging Face access tokens: <https://huggingface.co/settings/tokens>
 
-## NVIDIA-DYNAMO
+### 1. Authenticate with NGC Registry
 
-NVIDIA Dynamo deployment notes are available in two versions:
-
-- [NvidiaDynamo.md](NvidiaDynamo.md): non-interactive `sbatch` workflow using `launch_dynamo.sh`
-- [NvidiaDynamo_interactive.md](NvidiaDynamo_interactive.md): for interactive workflow
-
-For the tested non-interactive path, start with:
-
-```bash
-sbatch launch_dynamo.sh
-```
-
-### Qwen3.6-27B @ 1M context benchmark
-
-A patched launcher and benchmark driver for running Qwen3.6-27B at 1M context window
-with fp8 KV cache are provided:
-
-- `launch_dynamo_qwen3.6-1m.sh` — Slurm launcher with all 1M-ctx flags wired in (TP=4,
-  fp8 KV, YaRN RoPE scaling, `SGLANG_ALLOW_OVERWRITE_LONGER_CONTEXT_LEN=1`)
-- `bench_qwen3.6_1m.sh` — benchmark driver that sweeps prefill input lengths and decode
-  concurrencies, reporting results in the same format as the vLLM baseline
-
-Results and methodology are in [Ndynamo+SGlangVSvllm.md](Ndynamo+SGlangVSvllm.md).
+Get an NGC API key at <https://ngc.nvidia.com> → Setup → Generate API Key, then:
 
 ```bash
-sbatch launch_dynamo_qwen3.6-1m.sh
-# once the endpoint is healthy:
-./bench_qwen3.6_1m.sh
+podman-hpc login nvcr.io
 ```
 
-## Setting up hugging face token
+When prompted:
 
-For some models you will need a hugging face token. The launcher script can
-read that token from a file in your home directory.
+```text
+Username: $oauthtoken
+Password: <your NGC API key>
+```
+
+### 2. Pull and migrate both runtime images
+
+```bash
+# SGLang backend
+podman-hpc pull    nvcr.io/nvidia/ai-dynamo/sglang-runtime:1.1.1
+podman-hpc migrate nvcr.io/nvidia/ai-dynamo/sglang-runtime:1.1.1
+
+# vLLM backend
+podman-hpc pull    nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.1.1
+podman-hpc migrate nvcr.io/nvidia/ai-dynamo/vllm-runtime:1.1.1
+```
+
+The `migrate` step squashes each image into PSCRATCH so subsequent jobs avoid
+the home-quota and rebuild overhead.
+
+### 3. (Optional) Set a Hugging Face token
+
+Only required for gated/private/license-gated models (Llama, Gemma, etc.); not
+needed for the default `Qwen/Qwen3-0.6B`. Get a token at
+<https://huggingface.co/settings/tokens>, then either:
 
 ```bash
 export HF_TOKEN=hf_your_token_here
 ```
 
-and/or, save it in your home directory:
+or save it to `~/.hf_token` (chmod 600) — every launcher reads either.
+
+### 4. Pre-download Model to `$SCRATCH`
+
+The launchers set `HF_HOME=$SCRATCH/cache` and mount `$SCRATCH` into the
+container, so anything cached at that path is picked up automatically.
+Pre-downloading on a login node avoids burning GPU walltime on the initial
+fetch.
+
+Download:
 
 ```bash
-echo "$HF_TOKEN" > "$HOME/.hf_token"
-chmod 600 "$HOME/.hf_token"
+# On a login node (no GPU needed)
+module load python                           # or activate your env
+pip install --user -U "huggingface_hub[cli]" # provides the new `hf` CLI
+
+export HF_HOME=$SCRATCH/cache
+mkdir -p "$HF_HOME"
+
+# Gated models need a token:
+export HF_TOKEN=$(cat ~/.hf_token)
+# or interactive: hf auth login
+
+hf download Qwen/Qwen3.6-27B --repo-type model --cache-dir "$HF_HOME"
+
+# Optional: Nemotron Ultra 253B
+hf download nvidia/Llama-3_1-Nemotron-Ultra-253B-v1 --repo-type model --cache-dir "$HF_HOME"
 ```
 
-Make sure to make the logs directory for Slurm logs. 
-# sglang-deployment (without NVIDIA-DYNAMO)
-```bash
-mkdir $PWD/logs
+Note: `huggingface-cli` was renamed to `hf`. Old `huggingface-cli` commands
+print a deprecation warning and no longer execute.
 
-sbatch launch.sh
+Check availability for any downloaded model:
+
+```bash
+MODEL_ID=Qwen/Qwen3.6-27B
+# MODEL_ID=nvidia/Llama-3_1-Nemotron-Ultra-253B-v1
+
+export MODEL_CACHE="$HF_HOME/models--${MODEL_ID//\//--}"
+
+# Where it lives + total size on disk
+du -sh "$MODEL_CACHE"
+
+# Per-shard sizes (resolved through symlinks -> real files)
+ls -lhL "$MODEL_CACHE"/snapshots/*/*.safetensors
+
+# Integrity checks: no zero-byte blobs, all referenced shards present
+find "$MODEL_CACHE"/blobs -size 0
+python3 -c "import glob, json, os; idx=glob.glob(os.environ['MODEL_CACHE'] + '/snapshots/*/model.safetensors.index.json')[0]; d=json.load(open(idx)); print(len(set(d['weight_map'].values())), 'unique shards')"
+```
+
+### 5. Edit the Slurm account
+
+Replace `<YOUR ACCOUNT>` in the `#SBATCH -A` line of [`launch_dynamo.sh`](launch_dynamo.sh)
+(and any backend-specific launcher you plan to run) with your NERSC project
+charge code.
+
+## Quickstart
+
+Use the unified launcher [`launch_dynamo.sh`](launch_dynamo.sh) and pick the backend
+with `BACKEND=`:
+
+```bash
+mkdir -p logs
+
+# Defaults: BACKEND=sglang, 1 node, 4 GPUs, TP=4, Qwen/Qwen3-0.6B, ctx=4096
+sbatch launch_dynamo.sh
+
+# Same on vLLM
+BACKEND=vllm sbatch launch_dynamo.sh
+
+# Qwen3.6-27B, either backend (MAX_MODEL_LEN caps the KV alloc on both)
+MODEL_NAME=Qwen/Qwen3.6-27B MAX_MODEL_LEN=8192 sbatch launch_dynamo.sh
+MODEL_NAME=Qwen/Qwen3.6-27B MAX_MODEL_LEN=8192 BACKEND=vllm sbatch launch_dynamo.sh
+
+# Nemotron Ultra 253B, either backend (adjust MAX_MODEL_LEN for the target run)
+MODEL_NAME=nvidia/Llama-3_1-Nemotron-Ultra-253B-v1 MAX_MODEL_LEN=8192 sbatch launch_dynamo.sh
+MODEL_NAME=nvidia/Llama-3_1-Nemotron-Ultra-253B-v1 MAX_MODEL_LEN=8192 BACKEND=vllm sbatch launch_dynamo.sh
+
+# Gated model (needs HF_TOKEN), vLLM, 2 nodes
+MODEL_NAME=meta-llama/Llama-3.1-8B-Instruct BACKEND=vllm \
+    sbatch --nodes=2 launch_dynamo.sh
+```
+
+| Env var | Default | What it controls |
+| --- | --- | --- |
+| `BACKEND` | `sglang` | `sglang` or `vllm` |
+| `MODEL_NAME` | `Qwen/Qwen3-0.6B` | Any HF model id; pre-download to `$SCRATCH/cache` to avoid in-job fetch |
+| `MAX_MODEL_LEN` | `4096` | Context cap; required for models whose native ctx exceeds GPU memory (e.g. Qwen3.6-27B native=256k → use 8192) |
+| `MAX_NUM_SEQS` | `8` | Max concurrent sequences (vLLM `--max-num-seqs`; ignored by SGLang) |
+| `HF_TOKEN` | from `~/.hf_token` | Required for gated models (Llama, Gemma, …) |
+
+The backend-specific smoke launchers ([`sglang/launch_sglang_smoke.sh`](sglang/launch_sglang_smoke.sh),
+[`vllm/launch_vllm_smoke.sh`](vllm/launch_vllm_smoke.sh)) are still checked in as
+single-backend references; the unified script is the recommended entry point.
+
+Then check the response:
+
+```bash
+python3 -m json.tool logs/dynamo-response-<job-id>.json
+```
+
+## Layout
+
+Top-level:
+
+- [`README.md`](README.md) — this file
+- [`launch_dynamo.sh`](launch_dynamo.sh) — **unified launcher**, dispatches on `BACKEND=sglang|vllm` (default `sglang`)
+- [`main.py`](main.py), [`pyproject.toml`](pyproject.toml) — Python harness for OpenAI-client tests
+
+SGLang backend ([`sglang/`](sglang/), image v1.1.1):
+
+| File | What it is |
+| --- | --- |
+| [`sglang/README_sglang.md`](sglang/README_sglang.md) | `sbatch` quickstart |
+| [`sglang/sglang_interactive.md`](sglang/sglang_interactive.md) | Interactive (manual `podman-hpc`) walkthrough |
+| [`sglang/sglang-vs-vllm.md`](sglang/sglang-vs-vllm.md) | Qwen3.6-27B @ 1M ctx: Dynamo+SGLang vs vLLM v0.21.0 |
+| [`sglang/launch_sglang_smoke.sh`](sglang/launch_sglang_smoke.sh) | 1- or N-node smoke launcher |
+| [`sglang/launch_sglang_qwen3.6-1m.sh`](sglang/launch_sglang_qwen3.6-1m.sh) | 1M-ctx benchmark launcher (TP=4, fp8 KV, YaRN) |
+| [`sglang/launch_sglang_standalone.sh`](sglang/launch_sglang_standalone.sh) | Standalone SGLang (no Dynamo) for comparison |
+
+vLLM backend ([`vllm/`](vllm/), image v1.1.1):
+
+| File | What it is |
+| --- | --- |
+| [`vllm/README_vllm.md`](vllm/README_vllm.md) | `sbatch` quickstart |
+| [`vllm/launch_vllm_smoke.sh`](vllm/launch_vllm_smoke.sh) | 1- or N-node smoke launcher |
+
+## Where to read next
+
+| Topic | Doc |
+| --- | --- |
+| SGLang setup, smoke test, multi-node | [`sglang/README_sglang.md`](sglang/README_sglang.md) |
+| SGLang interactive (manual) workflow | [`sglang/sglang_interactive.md`](sglang/sglang_interactive.md) |
+| Qwen3.6-27B @ 1M ctx: SGLang vs vLLM | [`sglang/sglang-vs-vllm.md`](sglang/sglang-vs-vllm.md) |
+| vLLM backend (v1.1.1) quickstart | [`vllm/README_vllm.md`](vllm/README_vllm.md) |
+
+## Standalone SGLang (no Dynamo)
+
+For an apples-to-apples comparison with the Dynamo-managed path, the repo also
+ships a plain SGLang launcher: [`sglang/launch_sglang_standalone.sh`](sglang/launch_sglang_standalone.sh).
+
+```bash
+sbatch sglang/launch_sglang_standalone.sh
 ```

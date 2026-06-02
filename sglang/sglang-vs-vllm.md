@@ -68,7 +68,7 @@ by what the interactive shell has set.
 
 ```bash
 JOBID=<your-job-id>
-tail -f logs/launch_dynamo_qwen3.6-1m.sh-${JOBID}.out
+tail -f logs/launch_sglang_qwen3.6-1m.sh-${JOBID}.out
 ```
 
 Expected milestones:
@@ -86,7 +86,7 @@ Once step 4 appears, kick off the bench from the same login session:
 
 ```bash
 source logs/dynamo-ready-${JOBID}.env
-./bench_qwen3.6_1m.sh
+./bench_sglang_qwen3.6_1m.sh
 ```
 
 If step 3 never completes (worker_ready times out at ~30 min), inspect the worker log:
@@ -99,14 +99,14 @@ Common failure at 1M ctx: SGLang errors with `context_length > derived context_l
 (262144)`. Qwen3.6-27B's native max is 256k; reaching 1M needs both
 `SGLANG_ALLOW_OVERWRITE_LONGER_CONTEXT_LEN=1` (env var) and YaRN RoPE scaling via
 `--json-model-override-args '{"rope_scaling":{"rope_type":"yarn","factor":<CTX/262144>,"original_max_position_embeddings":262144}}'`.
-Both are now wired into `launch_dynamo_qwen3.6-1m.sh`. The other likely failure at 1M
+Both are now wired into `launch_sglang_qwen3.6-1m.sh`. The other likely failure at 1M
 ctx is **OOM during KV cache allocation**. To validate the pipeline first, retry at
 half-context and then push back up:
 
 ```bash
-CONTEXT_LEN=524288 sbatch launch_dynamo_qwen3.6-1m.sh
+CONTEXT_LEN=524288 sbatch launch_sglang_qwen3.6-1m.sh
 # then once healthy:
-CONTEXT_LEN=1010000 sbatch launch_dynamo_qwen3.6-1m.sh
+CONTEXT_LEN=1010000 sbatch launch_sglang_qwen3.6-1m.sh
 ```
 
 Other quick triage commands:
@@ -131,8 +131,8 @@ scancel ${JOBID}
 3. Migrate the Dynamo container image to PSCRATCH once per cluster (avoids home-dir
    quota issues and speeds up container start):
    ```bash
-   podman-hpc pull    nvcr.io/nvidia/ai-dynamo/sglang-runtime:1.0.2
-   podman-hpc migrate nvcr.io/nvidia/ai-dynamo/sglang-runtime:1.0.2
+   podman-hpc pull    nvcr.io/nvidia/ai-dynamo/sglang-runtime:1.1.1
+   podman-hpc migrate nvcr.io/nvidia/ai-dynamo/sglang-runtime:1.1.1
    ```
 4. If `Qwen/Qwen3.6-27B` OOMs at full 1M ctx on 4×A100, drop to `CONTEXT_LEN=524288`
    first to validate the pipeline, then push back up. The vLLM baseline almost certainly
@@ -163,9 +163,9 @@ almost certainly used `--kv-cache-dtype fp8` (halves it to ~128 GiB/seq); set
 `--kv-cache-dtype fp8_e5m2` in SGLang to match. Without it, batched decode at 1M ctx
 won't fit.
 
-## 2. Patch to `launch_dynamo.sh`
+## 2. Patch to `launch_sglang_smoke.sh`
 
-The relevant edit to the worker launch in `nvidia-dynamo-perlmutter/launch_dynamo.sh`
+The relevant edit to the worker launch in `nvidia-dynamo-perlmutter/launch_sglang_smoke.sh`
 (around line 177):
 
 ```bash
@@ -202,14 +202,14 @@ Without both `SGLANG_ALLOW_OVERWRITE_LONGER_CONTEXT_LEN=1` and the YaRN
 `--json-model-override-args`, SGLang either refuses to start
 (`User-specified context_length (1010000) is greater than the derived context_length
 (262144)`) or starts but produces incoherent output past 256k. The checked-in
-`launch_dynamo_qwen3.6-1m.sh` computes `factor = CONTEXT_LEN / 262144` automatically.
+`launch_sglang_qwen3.6-1m.sh` computes `factor = CONTEXT_LEN / 262144` automatically.
 
-Submit with `MODEL_NAME=Qwen/Qwen3.6-27B sbatch --nodes=1 launch_dynamo.sh` (single 4-GPU
+Submit with `MODEL_NAME=Qwen/Qwen3.6-27B sbatch --nodes=1 launch_sglang_smoke.sh` (single 4-GPU
 replica to match the baseline TP=4 layout) or `--nodes=2` to mirror the 2-node router 1M
 stack.
 
 The clean, self-contained version of this is checked in as
-`launch_dynamo_qwen3.6-1m.sh` so `launch_dynamo.sh` itself stays unmodified.
+`launch_sglang_qwen3.6-1m.sh` so `launch_sglang_smoke.sh` itself stays unmodified.
 
 ## 3. Dynamo-specific knobs that matter
 
@@ -282,18 +282,18 @@ Every sweep knob is overridable at invocation time:
 
 ```bash
 # More samples per data point for cleaner numbers (slower):
-PREFILL_NUM_PROMPTS=16 ./bench_qwen3.6_1m.sh
+PREFILL_NUM_PROMPTS=16 ./bench_sglang_qwen3.6_1m.sh
 
 # Higher concurrency to push prefill harder (closer to "peak"):
-PREFILL_CONCURRENCY=4 PREFILL_NUM_PROMPTS=16 ./bench_qwen3.6_1m.sh
+PREFILL_CONCURRENCY=4 PREFILL_NUM_PROMPTS=16 ./bench_sglang_qwen3.6_1m.sh
 
 # Skip the most expensive input size if you are tight on time:
-PREFILL_INPUT_LENS="32768 131072 262144" ./bench_qwen3.6_1m.sh
+PREFILL_INPUT_LENS="32768 131072 262144" ./bench_sglang_qwen3.6_1m.sh
 ```
 
 Decode-side knobs (`DECODE_CONCURRENCY`, `DECODE_BATCH_OUTPUT_LEN`,
 `DECODE_SINGLE_OUTPUT_LEN`, etc.) override the same way — see the top of
-`bench_qwen3.6_1m.sh` for the full list of `: "${VAR:=default}"` lines.
+`bench_sglang_qwen3.6_1m.sh` for the full list of `: "${VAR:=default}"` lines.
 
 ## 5. Optional features
 
@@ -312,7 +312,7 @@ Decode-side knobs (`DECODE_CONCURRENCY`, `DECODE_BATCH_OUTPUT_LEN`,
 
 ## 6. How to run (two-step workflow)
 
-`sbatch launch_dynamo_qwen3.6-1m.sh` only starts the **server**; it stays up until
+`sbatch launch_sglang_qwen3.6-1m.sh` only starts the **server**; it stays up until
 walltime expires or `scancel`. The benchmark is a separate step that must be triggered
 manually against the live endpoint — submitting and just waiting will yield no numbers.
 
@@ -322,12 +322,12 @@ mkdir -p logs
 
 # ─── Step 1: submit the server job ───────────────────────────────────────────
 # Edit the #SBATCH -A line first.
-sbatch launch_dynamo_qwen3.6-1m.sh
-# (or:  sbatch --nodes=2 launch_dynamo_qwen3.6-1m.sh   for TP=8)
+sbatch launch_sglang_qwen3.6-1m.sh
+# (or:  sbatch --nodes=2 launch_sglang_qwen3.6-1m.sh   for TP=8)
 
 # Track the job and wait for the ready line:
 squeue -u $USER
-tail -f logs/launch_dynamo_qwen3.6-1m.sh-<jobid>.out
+tail -f logs/launch_sglang_qwen3.6-1m.sh-<jobid>.out
 # Wait until you see:
 #   [...] Dynamo SGLang ready. Endpoint: http://nidXXXXXX:8000/v1
 #   [...] Ready marker: logs/dynamo-ready-<jobid>.env
@@ -349,10 +349,10 @@ ssh ${HEAD_NODE} 'podman-hpc ps --format "table {{.Names}}\t{{.Image}}"'
 # Either container works; both ship sglang.bench_serving.
 
 # ─── Step 4: run the bench inside the container ──────────────────────────────
-ssh ${HEAD_NODE} "podman-hpc exec sharp_hugle bash -lc 'cd /workdir && ./bench_qwen3.6_1m.sh'"
+ssh ${HEAD_NODE} "podman-hpc exec sharp_hugle bash -lc 'cd /workdir && ./bench_sglang_qwen3.6_1m.sh'"
 # The ${PWD}:/workdir mount means logs/bench-<stamp>/ lands back in this repo dir.
 # For an interactive TTY (live progress lines):
-#   ssh -t ${HEAD_NODE} "podman-hpc exec -it sharp_hugle bash -lc 'cd /workdir && ./bench_qwen3.6_1m.sh'"
+#   ssh -t ${HEAD_NODE} "podman-hpc exec -it sharp_hugle bash -lc 'cd /workdir && ./bench_sglang_qwen3.6_1m.sh'"
 
 # ─── Step 5: collect results + clean up ──────────────────────────────────────
 cat logs/bench-*/summary.txt
@@ -360,7 +360,7 @@ scancel <jobid>      # stops idle GPU charging once you have the numbers
 ```
 
 If `sglang.bench_serving` / `vllm` happens to be installed on the login node, you can
-skip steps 3–4 and just run `./bench_qwen3.6_1m.sh` directly.
+skip steps 3–4 and just run `./bench_sglang_qwen3.6_1m.sh` directly.
 
 ## Baseline reference (vLLM v0.21.0)
 
@@ -374,7 +374,7 @@ and [`perlmutter-stack-qwen3.5-27b-1m-vllm.sh`](https://gitlab.nersc.gov/nersc/o
 - optional `--kv-cache-dtype` (fp8 to fit 1M)
 - MTP experiment wired via `--speculative-config`
 
-The Dynamo SGLang launcher in `nvidia-dynamo-perlmutter/launch_dynamo.sh` currently passes
+The Dynamo SGLang launcher in `nvidia-dynamo-perlmutter/launch_sglang_smoke.sh` currently passes
 only `--model-path` / `--discovery-backend` / `--tensor-parallel-size` — no context length,
 no batching knobs, no kv-cache dtype. It needs the extensions in sections 1–7 above to match.
 
@@ -382,10 +382,10 @@ no batching knobs, no kv-cache dtype. It needs the extensions in sections 1–7 
 
 Qwen3.6-27B was served on a single 4-GPU Perlmutter node via NVIDIA Dynamo with the
 SGLang backend (`nvcr.io/nvidia/ai-dynamo/sglang-runtime:1.0.2`), using the
-`launch_dynamo_qwen3.6-1m.sh` launcher (TP=4, `CONTEXT_LEN=1010000`,
+`launch_sglang_qwen3.6-1m.sh` launcher (TP=4, `CONTEXT_LEN=1010000`,
 `KV_DTYPE=fp8_e5m2`, `ATTN_BACKEND=flashinfer`, YaRN RoPE scaling with factor=3.9, and
 `SGLANG_ALLOW_OVERWRITE_LONGER_CONTEXT_LEN=1`). The benchmark driver
-`bench_qwen3.6_1m.sh` was invoked inside the running Dynamo container via
+`bench_sglang_qwen3.6_1m.sh` was invoked inside the running Dynamo container via
 `podman-hpc exec`, hitting the OpenAI-compatible endpoint at `http://nid001072:8000/v1`.
 Three measurements were taken via `sglang.bench_serving` against the live endpoint:
 prefill peak across input lengths {32k, 128k, 256k, 512k} at concurrency 2; single-request
@@ -460,5 +460,5 @@ grep -E "Output token throughput" logs/bench-20260528-005625/decode-*.log
 ```
 
 If the four files report different underlying numbers, the throughput extractor in
-`bench_qwen3.6_1m.sh` is picking up the wrong field and the headline batched-decode
+`bench_sglang_qwen3.6_1m.sh` is picking up the wrong field and the headline batched-decode
 number needs correction.

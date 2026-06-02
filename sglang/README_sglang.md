@@ -1,6 +1,6 @@
 # NVIDIA Dynamo Quickstart on Perlmutter (SGLang Backend)
 
-NVIDIA Dynamo was tested on NERSC Perlmutter using the SGLang backend through the non-interactive Slurm launcher `launch_dynamo.sh`. The script allocates GPU node(s) with Slurm, starts the Dynamo frontend on the head node, and launches one Dynamo SGLang worker per allocated node using `podman-hpc` and the migrated `sglang-runtime:1.0.2` container image from `$PSCRATCH`. The deployment was validated with the `Qwen/Qwen3-0.6B` model using the Dynamo `/health` endpoint and an OpenAI-compatible chat completion request. 
+NVIDIA Dynamo was tested on NERSC Perlmutter using the SGLang backend through the non-interactive Slurm launcher `launch_sglang_smoke.sh`. The script allocates GPU node(s) with Slurm, starts the Dynamo frontend on the head node, and launches one Dynamo SGLang worker per allocated node using `podman-hpc` and the migrated `sglang-runtime:1.1.1` container image from `$PSCRATCH`. The deployment was validated with the `Qwen/Qwen3-0.6B` model using the Dynamo `/health` endpoint and an OpenAI-compatible chat completion request. 
 
 ## Prerequisites
 
@@ -28,14 +28,14 @@ Get your NGC API key at: <https://ngc.nvidia.com> -> Setup -> Generate API Key.
 Pull the image and migrate it to `$PSCRATCH` to avoid home directory quota issues:
 
 ```bash
-podman-hpc pull nvcr.io/nvidia/ai-dynamo/sglang-runtime:1.0.2
-podman-hpc migrate nvcr.io/nvidia/ai-dynamo/sglang-runtime:1.0.2
+podman-hpc pull nvcr.io/nvidia/ai-dynamo/sglang-runtime:1.1.1
+podman-hpc migrate nvcr.io/nvidia/ai-dynamo/sglang-runtime:1.1.1
 ```
 
 The batch script uses:
 
 ```bash
-nvcr.io/nvidia/ai-dynamo/sglang-runtime:1.0.2
+nvcr.io/nvidia/ai-dynamo/sglang-runtime:1.1.1
 ```
 
 ## Step 3 - Optional Hugging Face Token
@@ -79,20 +79,20 @@ From this directory:
 
 ```bash
 mkdir -p logs
-sbatch launch_dynamo.sh
+sbatch launch_sglang_smoke.sh
 ```
 
 To test more nodes without editing the script:
 
 ```bash
-sbatch --nodes=2 launch_dynamo.sh
-sbatch --nodes=3 launch_dynamo.sh
+sbatch --nodes=2 launch_sglang_smoke.sh
+sbatch --nodes=3 launch_sglang_smoke.sh
 ```
 
 To test a gated Hugging Face model, first make sure your Hugging Face account has accepted the model license, then submit with `MODEL_NAME`:
 
 ```bash
-MODEL_NAME=meta-llama/Llama-3.1-8B-Instruct sbatch launch_dynamo.sh
+MODEL_NAME=meta-llama/Llama-3.1-8B-Instruct sbatch launch_sglang_smoke.sh
 ```
 
 For that model, the launcher will use your `HF_TOKEN` from the environment or `$HOME/.hf_token`. Gated or larger models can take longer to download and load, and may fail if your token does not have access.
@@ -100,7 +100,7 @@ For that model, the launcher will use your `HF_TOKEN` from the environment or `$
 To test a small public Hugging Face model without changing the script, use:
 
 ```bash
-MODEL_NAME=TinyLlama/TinyLlama-1.1B-Chat-v1.0 sbatch launch_dynamo.sh
+MODEL_NAME=TinyLlama/TinyLlama-1.1B-Chat-v1.0 sbatch launch_sglang_smoke.sh
 ```
 
 This path was tested successfully with the included smoke test.
@@ -109,12 +109,12 @@ Smoke-test models verified so far:
 
 | Model | Nodes | GPUs | TP | Submit command (example) |
 | --- | ---: | ---: | ---: | --- |
-| `Qwen/Qwen3-0.6B` | 1 | 4 | 4 | `sbatch launch_dynamo.sh` |
-| `Qwen/Qwen3-0.6B` | 2 | 8 | 8 | `sbatch --nodes=2 launch_dynamo.sh` |
-| `TinyLlama/TinyLlama-1.1B-Chat-v1.0` | 1 | 4 | 4 | `MODEL_NAME=TinyLlama/TinyLlama-1.1B-Chat-v1.0 sbatch launch_dynamo.sh` |
-| `TinyLlama/TinyLlama-1.1B-Chat-v1.0` | 2 | 8 | 8 | `MODEL_NAME=TinyLlama/TinyLlama-1.1B-Chat-v1.0 sbatch --nodes=2 launch_dynamo.sh` |
+| `Qwen/Qwen3-0.6B` | 1 | 4 | 4 | `sbatch launch_sglang_smoke.sh` |
+| `Qwen/Qwen3-0.6B` | 2 | 8 | 8 | `sbatch --nodes=2 launch_sglang_smoke.sh` |
+| `TinyLlama/TinyLlama-1.1B-Chat-v1.0` | 1 | 4 | 4 | `MODEL_NAME=TinyLlama/TinyLlama-1.1B-Chat-v1.0 sbatch launch_sglang_smoke.sh` |
+| `TinyLlama/TinyLlama-1.1B-Chat-v1.0` | 2 | 8 | 8 | `MODEL_NAME=TinyLlama/TinyLlama-1.1B-Chat-v1.0 sbatch --nodes=2 launch_sglang_smoke.sh` |
 
-You can also edit `#SBATCH --nodes` for 1 node, 2 nodes, 3 nodes, or more directly and edit `TP` in `launch_dynamo.sh` if your allocation or model requires it. You can set `MODEL_NAME` at submit time without editing the script. By default, `TP` is computed as `4 * SLURM_JOB_NUM_NODES`, matching 4 GPUs per allocated node.
+You can also edit `#SBATCH --nodes` for 1 node, 2 nodes, 3 nodes, or more directly and edit `TP` in `launch_sglang_smoke.sh` if your allocation or model requires it. You can set `MODEL_NAME` at submit time without editing the script. By default, `TP` is computed as `4 * SLURM_JOB_NUM_NODES`, matching 4 GPUs per allocated node.
 
 ## What the Job Does
 
@@ -166,8 +166,8 @@ Explain what NVIDIA Dynamo does on top of SGLang.
 Slurm output goes to:
 
 ```bash
-logs/launch_dynamo.sh-<job-id>.out
-logs/launch_dynamo.sh-<job-id>.err
+logs/launch_sglang_smoke.sh-<job-id>.out
+logs/launch_sglang_smoke.sh-<job-id>.err
 ```
 
 By default, `.out` contains only high-level job information and `.err` should usually be empty. Frontend and worker runtime logs are redirected to `/dev/null` to keep the log directory small. The model response goes to:
@@ -182,7 +182,6 @@ Check the response with:
 python3 -m json.tool "logs/dynamo-response-<job-id>.json"
 ```
 
-The previous version with optional detailed runtime logs is preserved as `launch_dynamo-old.sh`.
 
 ## Notes
 
