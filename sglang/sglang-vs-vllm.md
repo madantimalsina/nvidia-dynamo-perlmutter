@@ -462,3 +462,76 @@ grep -E "Output token throughput" logs/bench-20260528-005625/decode-*.log
 If the four files report different underlying numbers, the throughput extractor in
 `bench_sglang_qwen3.6_1m.sh` is picking up the wrong field and the headline batched-decode
 number needs correction.
+
+## 8. Results — Qwen3.6-27B @ 1M ctx, 4×A100, fp8 KV (2026-06-02)
+
+The 2026-06-02 reproduction run used the same SGLang-specific workflow as Section 7:
+single 4-GPU Perlmutter node, NVIDIA Dynamo with the SGLang backend
+(`nvcr.io/nvidia/ai-dynamo/sglang-runtime:1.0.2`), TP=4,
+`CONTEXT_LEN=1010000`, `KV_DTYPE=fp8_e5m2`, `ATTN_BACKEND=flashinfer`, YaRN RoPE
+scaling with factor=3.9, and `SGLANG_ALLOW_OVERWRITE_LONGER_CONTEXT_LEN=1`.
+The benchmark driver was `bench_sglang_qwen3.6_1m.sh`, invoked inside the running
+Dynamo container via `podman-hpc exec`, hitting
+`http://nid001048:8000/v1`. The ready marker was
+`logs/dynamo-ready-1361689.env`, and raw benchmark logs were written under
+`logs/bench-20260602-231248/`.
+
+### Reproduction comparison vs 2026-05-27 SGLang run
+
+| Metric                | 2026-05-27 | 2026-06-02 | Delta        | Change |
+| --------------------- | ---------- | ---------- | ------------ | ------ |
+| Prefill peak          | 11,202.53 tok/s | 11,209.12 tok/s | +6.59 tok/s  | +0.06% |
+| Decode single-request | 65.00 tok/s     | 65.00 tok/s     | 0.00 tok/s   | 0.00%  |
+| Decode batched peak   | 880.00 tok/s    | 867.00 tok/s    | -13.00 tok/s | -1.48% |
+
+### Comparison vs vLLM v0.21.0 baseline
+
+| Metric                | vLLM v0.21.0 | Dynamo+SGLang 2026-06-02 | Winner          |
+| --------------------- | ------------ | ------------------------- | --------------- |
+| Prefill peak          | 17.9k tok/s  | 11.2k tok/s               | vLLM (1.6×)     |
+| Decode single-request | 50–67 tok/s  | 65 tok/s                  | tie             |
+| Decode batched peak   | 264 tok/s    | 867 tok/s                 | SGLang (3.3×)   |
+
+### Prefill peak — input length sweep (Dynamo+SGLang, 2026-06-02)
+
+Setup: input length swept over {32k, 128k, 256k, 512k}, output=1 token,
+concurrency=2. Reports `Input token throughput (tok/s)`.
+
+| Input length | 2026-05-27 | 2026-06-02 | Change |
+| ------------ | ---------- | ---------- | ------ |
+| 32k          | 11,202.53  | 11,209.12  | +0.06% |
+| 128k         |  7,267.88  |  7,283.04  | +0.21% |
+| 256k         |  4,737.20  |  4,739.95  | +0.06% |
+| 512k         |  2,243.59  |  2,243.24  | -0.02% |
+
+### Decode single-request (Dynamo+SGLang, 2026-06-02)
+
+Setup: input=128 tokens, output=1024 tokens, concurrency=1, num-prompts=8. Reports
+`Output token throughput (tok/s)`.
+
+| 2026-05-27 | 2026-06-02 | Change |
+| ---------- | ---------- | ------ |
+| 65.00      | 65.00      | 0.00%  |
+
+### Decode batched peak — concurrency sweep (Dynamo+SGLang, 2026-06-02)
+
+Setup: input=128 tokens, output=256 tokens, concurrency swept over {4, 8, 16, 32, 64,
+128}, num-prompts=C×4 per level. Reports `Output token throughput (tok/s)`.
+
+| Concurrency | 2026-05-27 | 2026-06-02 | Change |
+| ----------- | ---------- | ---------- | ------ |
+| 4           | 240.00     | 240.00     | 0.00%  |
+| 8           | 464.00     | 462.00     | -0.43% |
+| 16          | 880.00     | 864.00     | -1.82% |
+| 32          | 880.00     | 864.00     | -1.82% |
+| 64          | 880.00     | 864.00     | -1.82% |
+| 128         | 880.00     | 867.00     | -1.48% |
+
+### Takeaway
+
+The 2026-06-02 run is a close reproduction of the 2026-05-27 SGLang result. Prefill
+throughput is effectively unchanged, single-request decode matches exactly, and
+batched decode is lower by only ~1.5% at the headline peak. The original comparison
+against the vLLM v0.21.0 baseline still holds: vLLM is faster for prefill-heavy
+workloads, while Dynamo+SGLang remains much faster for batched decode and
+high-concurrency serving.
